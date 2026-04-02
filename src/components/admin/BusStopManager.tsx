@@ -110,18 +110,20 @@ export const BusStopManager = () => {
     setError(null);
     setSuccess(null);
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('bus_stops')
       .update({ name: normalized })
-      .eq('id', stopId)
-      .select()
-      .single();
+      .eq('id', stopId);
 
     if (error) {
       console.error('Error editing bus stop:', error);
       setError(`Failed to update bus stop: ${error.message}`);
-    } else if (data) {
-      setBusStops((prev) => prev.map((stop) => (stop.id === stopId ? data : stop)).sort((a, b) => a.name.localeCompare(b.name)));
+    } else {
+      setBusStops((prev) =>
+        prev
+          .map((stop) => (stop.id === stopId ? { ...stop, name: normalized } : stop))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      );
       setSuccess('Bus stop updated successfully.');
       cancelEdit();
     }
@@ -218,6 +220,16 @@ export const BusStopManager = () => {
                         type="text"
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void handleSaveEdit(stop.id);
+                          }
+                          if (e.key === 'Escape') {
+                            e.preventDefault();
+                            cancelEdit();
+                          }
+                        }}
                         className="spotlight-field flex-grow px-3 py-2 border border-slate-600 bg-slate-900 text-slate-100 rounded-lg outline-none"
                         autoFocus
                       />
