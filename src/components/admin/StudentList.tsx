@@ -1392,9 +1392,9 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
 
       {canvasDesignerOpen && qrStudent ? (
         <div className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-sm">
-          <div className="h-full w-full p-4 md:p-6 grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4">
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4 md:p-5 flex items-center justify-center">
-              <div className="w-full max-w-[920px]">
+          <div className="h-full w-full p-3 md:p-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_340px] gap-3 md:gap-4 overflow-hidden">
+            <div className="min-h-0 rounded-2xl border border-slate-700 bg-slate-900/60 p-3 md:p-4 flex items-center justify-center overflow-hidden">
+              <div className="w-full h-full flex flex-col">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-sm md:text-base font-bold text-slate-100">Global V Card Canvas</h3>
                   <p className="text-xs text-slate-400">Drag photo or QR to reposition</p>
@@ -1402,9 +1402,11 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
 
                 <div
                   ref={stageRef}
-                  className="relative w-full max-w-[880px] mx-auto aspect-[640/760] rounded-3xl border border-slate-700 overflow-hidden select-none touch-none"
+                  className="relative mx-auto aspect-[640/760] rounded-3xl border border-slate-700 overflow-hidden select-none touch-none"
                   style={{
                     background: 'linear-gradient(165deg, #0f172a, #1e293b 60%, #0b1220)',
+                    width: 'min(100%, calc((100vh - 180px) * 0.8421))',
+                    maxHeight: 'calc(100vh - 180px)',
                   }}
                 >
                   {cardTheme.backgroundImageUrl ? (
@@ -1520,7 +1522,7 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4 md:p-5 overflow-auto">
+            <div className="min-h-0 rounded-2xl border border-slate-700 bg-slate-900/70 p-3 md:p-4 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-slate-100">Global Controls</h4>
                 <button
