@@ -1,3 +1,6 @@
+# For a Client
+
+
 # Student Bus Pass & Verification System
 
 A modern, full-stack solution for managing student bus passes and verifying attendance using QR codes. Built with **Vite + React**, **Supabase**, **Tailwind CSS**, and ready for deployment on **Vercel**.
@@ -92,17 +95,17 @@ Choose between:
 $''$''$''
 src/
 +-- components/
-¦   +-- admin/
-¦   ¦   +-- AddStudentForm.tsx
-¦   ¦   +-- StudentList.tsx
-¦   ¦   +-- QRGenerator.tsx
-¦   +-- scanner/
-¦       +-- QRScanner.tsx
+Â¦   +-- admin/
+Â¦   Â¦   +-- AddStudentForm.tsx
+Â¦   Â¦   +-- StudentList.tsx
+Â¦   Â¦   +-- QRGenerator.tsx
+Â¦   +-- scanner/
+Â¦       +-- QRScanner.tsx
 +-- pages/
-¦   +-- AdminDashboard.tsx
-¦   +-- ScannerApp.tsx
+Â¦   +-- AdminDashboard.tsx
+Â¦   +-- ScannerApp.tsx
 +-- lib/
-¦   +-- supabase.ts
+Â¦   +-- supabase.ts
 +-- App.tsx
 $''$''$''
 
