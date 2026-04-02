@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Trash2, AlertCircle, Search, Pencil, X, RotateCcw, QrCode, Download, Printer } from 'lucide-react'
+import { Trash2, AlertCircle, Search, Pencil, X, RotateCcw, QrCode, Download, Printer, Upload } from 'lucide-react'
 import QRCode from 'qrcode'
 import JSZip from 'jszip'
 
@@ -27,7 +27,13 @@ interface VCardDesign {
   photoSize: number
   photoRadius: number
   qrSize: number
+  qrX: number
   qrY: number
+  topTitleY: number
+  mainTitleY: number
+  footerY: number
+  textOffsetX: number
+  textOffsetY: number
 }
 
 interface VCardTheme {
@@ -41,26 +47,39 @@ interface VCardTheme {
   titleMainColor: string
   bodyTextColor: string
   footerColor: string
+  titleTopTextSize: number
+  titleMainTextSize: number
   nameTextSize: number
   infoTextSize: number
+  idTextSize: number
+  busNoTextSize: number
+  stopTextSize: number
   footerTextSize: number
+  textGlow: number
   backgroundImageUrl: string
   backgroundOpacity: number
   backgroundBlur: number
 }
 
-type CanvasDragTarget = 'photo' | 'qr' | null
+type CanvasDragTarget = 'photo' | 'qr' | 'text' | null
 
 export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
   const PAGE_SIZE = 30
   const VCARD_SETTINGS_ID = '11111111-1111-1111-1111-111111111111'
+  const CARD_FONT_FAMILY = "'Segoe UI', Arial, Helvetica, sans-serif"
   const defaultVCardDesign: VCardDesign = {
     photoX: 56,
     photoY: 164,
     photoSize: 112,
     photoRadius: 20,
     qrSize: 200,
+    qrX: 320,
     qrY: 414,
+    topTitleY: 46,
+    mainTitleY: 95,
+    footerY: 716,
+    textOffsetX: 0,
+    textOffsetY: 0,
   }
   const defaultVCardTheme: VCardTheme = {
     titleTop: 'BUS PASS MANAGEMENT',
@@ -73,9 +92,15 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     titleMainColor: '#f8fafc',
     bodyTextColor: '#cbd5e1',
     footerColor: '#94a3b8',
+    titleTopTextSize: 22,
+    titleMainTextSize: 46,
     nameTextSize: 44,
     infoTextSize: 30,
+    idTextSize: 30,
+    busNoTextSize: 30,
+    stopTextSize: 30,
     footerTextSize: 38,
+    textGlow: 0,
     backgroundImageUrl: '',
     backgroundOpacity: 0.35,
     backgroundBlur: 0,
@@ -102,9 +127,12 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
   const [vCardPreviewLoading, setVCardPreviewLoading] = useState(false)
   const [cardDesign, setCardDesign] = useState<VCardDesign>(defaultVCardDesign)
   const [cardTheme, setCardTheme] = useState<VCardTheme>(defaultVCardTheme)
-  const [canvasPhotoLoadFailed, setCanvasPhotoLoadFailed] = useState(false)
   const [canvasDesignerOpen, setCanvasDesignerOpen] = useState(false)
   const [canvasDragTarget, setCanvasDragTarget] = useState<CanvasDragTarget>(null)
+  const [selectedCanvasTarget, setSelectedCanvasTarget] = useState<Exclude<CanvasDragTarget, null>>('photo')
+  const [showCanvasGuides, setShowCanvasGuides] = useState(true)
+  const [snapToGrid, setSnapToGrid] = useState(false)
+  const [nudgeStep, setNudgeStep] = useState(2)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState('')
   const [backgroundUploading, setBackgroundUploading] = useState(false)
@@ -125,6 +153,9 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     fees_paid: false,
     fees_paid_at: '',
   })
+  const [editImageFile, setEditImageFile] = useState<File | null>(null)
+  const [editImagePreview, setEditImagePreview] = useState<string | null>(null)
+  const [editRemoveImage, setEditRemoveImage] = useState(false)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{
     target: Exclude<CanvasDragTarget, null>
@@ -141,14 +172,31 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     photoSize: Math.max(84, Math.min(160, Math.round(design.photoSize))),
     photoRadius: Math.max(8, Math.min(28, Math.round(design.photoRadius))),
     qrSize: Math.max(170, Math.min(240, Math.round(design.qrSize))),
+    qrX: Math.max(220, Math.min(420, Math.round(design.qrX))),
     qrY: Math.max(390, Math.min(430, Math.round(design.qrY))),
+    topTitleY: Math.max(34, Math.min(64, Math.round(design.topTitleY))),
+    mainTitleY: Math.max(78, Math.min(124, Math.round(design.mainTitleY))),
+    footerY: Math.max(680, Math.min(734, Math.round(design.footerY))),
+    textOffsetX: Math.max(-50, Math.min(120, Math.round(design.textOffsetX))),
+    textOffsetY: Math.max(-50, Math.min(100, Math.round(design.textOffsetY))),
   })
+
+  const maybeSnap = (value: number) => {
+    if (!snapToGrid) return value
+    return Math.round(value / 4) * 4
+  }
 
   const clampCardTheme = (theme: VCardTheme): VCardTheme => ({
     ...theme,
+    titleTopTextSize: Math.max(14, Math.min(38, Math.round(theme.titleTopTextSize))),
+    titleMainTextSize: Math.max(28, Math.min(62, Math.round(theme.titleMainTextSize))),
     nameTextSize: Math.max(28, Math.min(82, Math.round(theme.nameTextSize))),
     infoTextSize: Math.max(16, Math.min(58, Math.round(theme.infoTextSize))),
+    idTextSize: Math.max(16, Math.min(54, Math.round(theme.idTextSize))),
+    busNoTextSize: Math.max(16, Math.min(54, Math.round(theme.busNoTextSize))),
+    stopTextSize: Math.max(16, Math.min(54, Math.round(theme.stopTextSize))),
     footerTextSize: Math.max(20, Math.min(68, Math.round(theme.footerTextSize))),
+    textGlow: Math.max(0, Math.min(10, Math.round(theme.textGlow))),
     backgroundOpacity: Math.max(0, Math.min(1, Number(theme.backgroundOpacity.toFixed(2)))),
     backgroundBlur: Math.max(0, Math.min(14, Math.round(theme.backgroundBlur))),
   })
@@ -279,8 +327,8 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
         setCardDesign(
           clampCardDesign({
             ...drag.startDesign,
-            photoX: drag.startDesign.photoX + dx,
-            photoY: drag.startDesign.photoY + dy,
+            photoX: maybeSnap(drag.startDesign.photoX + dx),
+            photoY: maybeSnap(drag.startDesign.photoY + dy),
           })
         )
       }
@@ -289,7 +337,18 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
         setCardDesign(
           clampCardDesign({
             ...drag.startDesign,
-            qrY: drag.startDesign.qrY + dy,
+            qrX: maybeSnap(drag.startDesign.qrX + dx),
+            qrY: maybeSnap(drag.startDesign.qrY + dy),
+          })
+        )
+      }
+
+      if (drag.target === 'text') {
+        setCardDesign(
+          clampCardDesign({
+            ...drag.startDesign,
+            textOffsetX: maybeSnap(drag.startDesign.textOffsetX + dx),
+            textOffsetY: maybeSnap(drag.startDesign.textOffsetY + dy),
           })
         )
       }
@@ -307,7 +366,7 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
     }
-  }, [canvasDesignerOpen, canvasDragTarget])
+  }, [canvasDesignerOpen, canvasDragTarget, snapToGrid])
 
   const startCanvasDrag = (target: Exclude<CanvasDragTarget, null>, event: React.PointerEvent) => {
     if (!stageRef.current) return
@@ -323,7 +382,34 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     }
 
     setCanvasDragTarget(target)
+    setSelectedCanvasTarget(target)
     event.preventDefault()
+  }
+
+  const nudgeSelected = (dx: number, dy: number) => {
+    setCardDesign((prev) => {
+      if (selectedCanvasTarget === 'photo') {
+        return clampCardDesign({
+          ...prev,
+          photoX: maybeSnap(prev.photoX + dx),
+          photoY: maybeSnap(prev.photoY + dy),
+        })
+      }
+
+      if (selectedCanvasTarget === 'qr') {
+        return clampCardDesign({
+          ...prev,
+          qrX: maybeSnap(prev.qrX + dx),
+          qrY: maybeSnap(prev.qrY + dy),
+        })
+      }
+
+      return clampCardDesign({
+        ...prev,
+        textOffsetX: maybeSnap(prev.textOffsetX + dx),
+        textOffsetY: maybeSnap(prev.textOffsetY + dy),
+      })
+    })
   }
 
   const fetchStudents = async (reset = false) => {
@@ -441,10 +527,49 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
       fees_paid: student.fees_paid,
       fees_paid_at: student.fees_paid_at || '',
     })
+    setEditImageFile(null)
+    setEditImagePreview(student.image_url)
+    setEditRemoveImage(false)
   }
 
   const closeEditModal = () => {
     setEditingStudent(null)
+    setEditImageFile(null)
+    setEditImagePreview(null)
+    setEditRemoveImage(false)
+  }
+
+  const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setEditImageFile(file)
+    setEditRemoveImage(false)
+
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setEditImagePreview(String(reader.result || ''))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const uploadEditedStudentImage = async (studentId: string, file: File) => {
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+    const safeStudentId = studentId.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const fileName = `${safeStudentId}-edit-${Date.now()}.${fileExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('student-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'image/jpeg',
+      })
+
+    if (uploadError) throw uploadError
+
+    const { data } = supabase.storage.from('student-images').getPublicUrl(fileName)
+    return data.publicUrl
   }
 
   const sanitizeForHtml = (value: string) =>
@@ -488,7 +613,7 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     const photoRadius = design.photoRadius
     const qrSize = design.qrSize
     const qrY = design.qrY
-    const textX = photoX + photoSize + 18
+    const textX = photoX + photoSize + 18 + design.textOffsetX
 
     const safeTopTitle = sanitizeForHtml(truncateForCard(theme.titleTop, 34))
     const safeMainTitle = sanitizeForHtml(truncateForCard(theme.titleMain, 30))
@@ -501,9 +626,10 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     const safeBusStop = sanitizeForHtml(truncateForCard(student.bus_stop, 28))
     const safeBusNo = sanitizeForHtml(String(student.bus_no ?? '-'))
     const safeInitial = sanitizeForHtml(truncateForCard(student.full_name, 1).toUpperCase())
+    const textFilterAttr = theme.textGlow > 0 ? ' filter="url(#textGlow)"' : ''
     const photoMarkup = photoDataUrl
       ? `<image href="${photoDataUrl}" x="${photoX}" y="${photoY}" width="${photoSize}" height="${photoSize}" preserveAspectRatio="xMidYMid slice" clip-path="url(#photoClip)" />`
-      : `<text x="${photoX + photoSize / 2}" y="${photoY + photoSize / 2 + 16}" text-anchor="middle" font-size="44" font-weight="700" fill="#cbd5e1">${safeInitial}</text>`
+      : `<text x="${photoX + photoSize / 2}" y="${photoY + photoSize / 2 + 16}" text-anchor="middle" font-size="44" font-weight="700" font-family="${CARD_FONT_FAMILY}" fill="#cbd5e1">${safeInitial}</text>`
 
     return `
       <svg xmlns="http://www.w3.org/2000/svg" width="640" height="760" viewBox="0 0 640 760">
@@ -520,6 +646,9 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
           <filter id="bgBlur" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="${theme.backgroundBlur}" />
           </filter>
+          <filter id="textGlow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="0" stdDeviation="${theme.textGlow / 2}" flood-color="#94a3b8" flood-opacity="0.65" />
+          </filter>
           <clipPath id="photoClip">
             <rect x="${photoX}" y="${photoY}" width="${photoSize}" height="${photoSize}" rx="${photoRadius}" ry="${photoRadius}" />
           </clipPath>
@@ -531,22 +660,22 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
         <rect x="1" y="1" width="638" height="758" rx="36" fill="none" stroke="#334155" stroke-width="2" />
         <line x1="0" y1="136" x2="640" y2="136" stroke="#334155" stroke-width="2" />
 
-        <text x="32" y="46" fill="${theme.titleTopColor}" font-size="22" letter-spacing="2">${safeTopTitle}</text>
-        <text x="32" y="95" fill="${theme.titleMainColor}" font-size="46" font-weight="700">${safeMainTitle}</text>
+        <text x="32" y="${design.topTitleY}" fill="${theme.titleTopColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.titleTopTextSize}" letter-spacing="2"${textFilterAttr}>${safeTopTitle}</text>
+        <text x="32" y="${design.mainTitleY}" fill="${theme.titleMainColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.titleMainTextSize}" font-weight="700"${textFilterAttr}>${safeMainTitle}</text>
 
         <rect x="${photoX}" y="${photoY}" width="${photoSize}" height="${photoSize}" rx="${photoRadius}" fill="#1e293b" stroke="#475569" stroke-width="2" />
         ${photoMarkup}
 
-        <text x="${textX}" y="${photoY + 26}" fill="${theme.titleMainColor}" font-size="${theme.nameTextSize}" font-weight="700">${safeName}</text>
-        <text x="${textX}" y="${photoY + 68}" fill="${theme.bodyTextColor}" font-size="${theme.infoTextSize}">${safeIdLabel}: ${safeStudentId}</text>
-        <text x="${textX}" y="${photoY + 104}" fill="${theme.bodyTextColor}" font-size="${theme.infoTextSize}">${safeBusLabel}: ${safeBusNo}</text>
-        <text x="${textX}" y="${photoY + 140}" fill="${theme.bodyTextColor}" font-size="${theme.infoTextSize}">${safeStopLabel}: ${safeBusStop}</text>
+        <text x="${textX}" y="${photoY + 26 + design.textOffsetY}" fill="${theme.titleMainColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.nameTextSize}" font-weight="700"${textFilterAttr}>${safeName}</text>
+        <text x="${textX}" y="${photoY + 68 + design.textOffsetY}" fill="${theme.bodyTextColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.idTextSize}"${textFilterAttr}>${safeIdLabel}: ${safeStudentId}</text>
+        <text x="${textX}" y="${photoY + 104 + design.textOffsetY}" fill="${theme.bodyTextColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.busNoTextSize}"${textFilterAttr}>${safeBusLabel}: ${safeBusNo}</text>
+        <text x="${textX}" y="${photoY + 140 + design.textOffsetY}" fill="${theme.bodyTextColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.stopTextSize}"${textFilterAttr}>${safeStopLabel}: ${safeBusStop}</text>
 
         <rect x="32" y="368" width="576" height="292" rx="22" fill="#0b1935" stroke="#334155" stroke-width="2" />
-        <rect x="${320 - qrSize / 2 - 12}" y="${qrY - 12}" width="${qrSize + 24}" height="${qrSize + 24}" rx="18" fill="#ffffff" />
-        <image href="${qrDataUrl}" x="${320 - qrSize / 2}" y="${qrY}" width="${qrSize}" height="${qrSize}" preserveAspectRatio="xMidYMid meet" />
+        <rect x="${design.qrX - qrSize / 2 - 12}" y="${qrY - 12}" width="${qrSize + 24}" height="${qrSize + 24}" rx="18" fill="#ffffff" />
+        <image href="${qrDataUrl}" x="${design.qrX - qrSize / 2}" y="${qrY}" width="${qrSize}" height="${qrSize}" preserveAspectRatio="xMidYMid meet" />
 
-        <text x="320" y="716" text-anchor="middle" fill="${theme.footerColor}" font-size="${theme.footerTextSize}">${safeFooter}</text>
+        <text x="320" y="${design.footerY}" text-anchor="middle" fill="${theme.footerColor}" font-family="${CARD_FONT_FAMILY}" font-size="${theme.footerTextSize}"${textFilterAttr}>${safeFooter}</text>
       </svg>
     `
   }
@@ -633,13 +762,12 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [qrStudent, qrImageUrl, cardDesign])
+  }, [qrStudent, qrImageUrl, cardDesign, cardTheme])
 
   const openQrModal = async (student: Student) => {
     setQrStudent(student)
     setQrImageUrl('')
     setVCardPreviewUrl('')
-    setCanvasPhotoLoadFailed(false)
     setQrLoading(true)
 
     try {
@@ -904,6 +1032,16 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     setError(null)
 
     try {
+      let nextImageUrl: string | null = editingStudent.image_url
+
+      if (editRemoveImage) {
+        nextImageUrl = null
+      }
+
+      if (editImageFile) {
+        nextImageUrl = await uploadEditedStudentImage(editForm.student_id.trim() || editingStudent.student_id, editImageFile)
+      }
+
       const updatePayload = {
         full_name: editForm.full_name,
         student_id: editForm.student_id,
@@ -912,6 +1050,7 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
         bus_stop: editForm.bus_stop,
         fees_paid: editForm.fees_paid,
         fees_paid_at: editForm.fees_paid ? (editForm.fees_paid_at || null) : null,
+        image_url: nextImageUrl,
       }
 
       const { data, error: updateError } = await supabase
@@ -1272,6 +1411,45 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
                 className="spotlight-field px-3 py-2.5 border border-slate-600 bg-slate-800 text-slate-100 rounded-lg outline-none md:col-span-2"
               />
 
+              <div className="md:col-span-2 rounded-lg border border-slate-700 bg-slate-800/60 p-3">
+                <p className="text-xs uppercase tracking-wide text-slate-400">Student Photo</p>
+                <div className="mt-2 flex items-center gap-3">
+                  {editImagePreview ? (
+                    <img src={editImagePreview} alt="Student" className="w-16 h-16 rounded-lg object-cover border border-slate-600" />
+                  ) : (
+                    <div className="w-16 h-16 rounded-lg bg-slate-700 border border-slate-600 flex items-center justify-center text-slate-200 text-lg font-bold">
+                      {(editForm.full_name.trim().charAt(0) || '?').toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-200 cursor-pointer">
+                      <Upload className="w-4 h-4" /> Change Photo
+                      <input type="file" accept="image/*" onChange={handleEditImageChange} className="hidden" />
+                    </label>
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditRemoveImage((prev) => {
+                            const next = !prev
+                            if (next) {
+                              setEditImagePreview(null)
+                              setEditImageFile(null)
+                            } else {
+                              setEditImagePreview(editingStudent?.image_url || null)
+                            }
+                            return next
+                          })
+                        }}
+                        className={`text-xs px-2 py-1 rounded border ${editRemoveImage ? 'border-red-500 text-red-300' : 'border-slate-600 text-slate-300'}`}
+                      >
+                        {editRemoveImage ? 'Image will be removed' : 'Remove current image'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="md:col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800 border border-slate-700">
                 <input
                   type="checkbox"
@@ -1409,28 +1587,24 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
                     maxHeight: 'calc(100vh - 180px)',
                   }}
                 >
-                  {cardTheme.backgroundImageUrl ? (
-                    <img
-                      src={cardTheme.backgroundImageUrl}
-                      alt="Background"
-                      className="absolute inset-0 w-full h-full object-cover pointer-events-none"
-                      style={{ opacity: cardTheme.backgroundOpacity, filter: `blur(${cardTheme.backgroundBlur}px)` }}
-                    />
-                  ) : null}
-                  <div className="absolute inset-x-0 top-0 h-[24.7%] bg-[radial-gradient(circle_at_top_right,_rgba(20,184,166,0.45),_transparent_60%)]" />
-                  <div className="absolute inset-x-0 top-[17.9%] border-t border-slate-600/80" />
+                  {vCardPreviewUrl ? (
+                    <img src={vCardPreviewUrl} alt="V Card Stage" className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">Loading exact preview...</div>
+                  )}
 
-                  <p className="absolute left-[5%] top-[6%] text-[0.95rem] md:text-[1.05rem] tracking-[0.16em]" style={{ color: cardTheme.titleTopColor }}>
-                    {truncateForCard(cardTheme.titleTop, 34)}
-                  </p>
-                  <p className="absolute left-[5%] top-[11.5%] text-[1.35rem] md:text-[1.8rem] font-bold" style={{ color: cardTheme.titleMainColor }}>
-                    {truncateForCard(cardTheme.titleMain, 30)}
-                  </p>
+                  {showCanvasGuides ? (
+                    <>
+                      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 border-l border-cyan-300/30 pointer-events-none" />
+                      <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-cyan-300/20 pointer-events-none" />
+                      <div className="absolute left-[5%] top-[48.4%] w-[90%] h-[38.4%] rounded-2xl border border-cyan-300/25 pointer-events-none" />
+                    </>
+                  ) : null}
 
                   <button
                     type="button"
                     onPointerDown={(event) => startCanvasDrag('photo', event)}
-                    className={`absolute border-2 ${canvasDragTarget === 'photo' ? 'border-emerald-400' : 'border-slate-500'} shadow-sm cursor-grab active:cursor-grabbing overflow-hidden bg-slate-700`}
+                    className={`absolute border-2 ${canvasDragTarget === 'photo' ? 'border-emerald-400 bg-emerald-400/10' : 'border-slate-300/70 bg-slate-100/10'} shadow-sm cursor-grab active:cursor-grabbing overflow-hidden`}
                     style={{
                       left: `${(cardDesign.photoX / 640) * 100}%`,
                       top: `${(cardDesign.photoY / 760) * 100}%`,
@@ -1439,85 +1613,36 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
                       borderRadius: `${cardDesign.photoRadius}px`,
                     }}
                   >
-                    {qrStudent.image_url && !canvasPhotoLoadFailed ? (
-                      <img
-                        src={qrStudent.image_url}
-                        alt={qrStudent.full_name}
-                        className="h-full w-full object-cover pointer-events-none"
-                        onError={() => setCanvasPhotoLoadFailed(true)}
-                      />
-                    ) : (
-                      <span className="h-full w-full flex items-center justify-center text-slate-100 text-3xl font-bold pointer-events-none">
-                        {(qrStudent.full_name.trim().charAt(0) || '?').toUpperCase()}
-                      </span>
-                    )}
+                    <span className="h-full w-full flex items-center justify-center text-[10px] uppercase tracking-wide text-slate-100/90 pointer-events-none">Photo</span>
                   </button>
 
-                  <div
-                    className="absolute font-bold whitespace-nowrap overflow-hidden text-ellipsis"
+                  <button
+                    type="button"
+                    onPointerDown={(event) => startCanvasDrag('text', event)}
+                    className={`absolute text-left p-0 border ${canvasDragTarget === 'text' ? 'border-amber-400 bg-amber-400/10' : 'border-amber-200/60 bg-amber-100/10'} rounded-md cursor-grab active:cursor-grabbing`}
                     style={{
-                      left: `${((cardDesign.photoX + cardDesign.photoSize + 18) / 640) * 100}%`,
-                      top: `${((cardDesign.photoY + 2) / 760) * 100}%`,
+                      left: `${((cardDesign.photoX + cardDesign.photoSize + 18 + cardDesign.textOffsetX) / 640) * 100}%`,
+                      top: `${((cardDesign.photoY + 2 + cardDesign.textOffsetY) / 760) * 100}%`,
                       width: `${((640 - (cardDesign.photoX + cardDesign.photoSize + 28)) / 640) * 100}%`,
-                      fontSize: `${cardTheme.nameTextSize * 0.62}px`,
-                      color: cardTheme.titleMainColor,
+                      height: `${(170 / 760) * 100}%`,
                     }}
                   >
-                    {truncateForCard(qrStudent.full_name, 24)}
-                  </div>
-                  <div
-                    className="absolute"
-                    style={{
-                      left: `${((cardDesign.photoX + cardDesign.photoSize + 18) / 640) * 100}%`,
-                      top: `${((cardDesign.photoY + 48) / 760) * 100}%`,
-                      fontSize: `${cardTheme.infoTextSize * 0.6}px`,
-                      color: cardTheme.bodyTextColor,
-                    }}
-                  >
-                    {cardTheme.idLabel}: {qrStudent.student_id}
-                  </div>
-                  <div
-                    className="absolute"
-                    style={{
-                      left: `${((cardDesign.photoX + cardDesign.photoSize + 18) / 640) * 100}%`,
-                      top: `${((cardDesign.photoY + 82) / 760) * 100}%`,
-                      fontSize: `${cardTheme.infoTextSize * 0.6}px`,
-                      color: cardTheme.bodyTextColor,
-                    }}
-                  >
-                    {cardTheme.busNoLabel}: {qrStudent.bus_no ?? '-'}
-                  </div>
-                  <div
-                    className="absolute"
-                    style={{
-                      left: `${((cardDesign.photoX + cardDesign.photoSize + 18) / 640) * 100}%`,
-                      top: `${((cardDesign.photoY + 116) / 760) * 100}%`,
-                      fontSize: `${cardTheme.infoTextSize * 0.6}px`,
-                      color: cardTheme.bodyTextColor,
-                    }}
-                  >
-                    {cardTheme.stopLabel}: {truncateForCard(qrStudent.bus_stop, 28)}
-                  </div>
-
-                  <div className="absolute left-[5%] top-[48.4%] w-[90%] h-[38.4%] rounded-2xl border border-slate-600 bg-[#0b1935]" />
+                    <span className="absolute top-1 left-1 text-[10px] uppercase tracking-wide text-amber-100/90 pointer-events-none">Text Block</span>
+                  </button>
 
                   <button
                     type="button"
                     onPointerDown={(event) => startCanvasDrag('qr', event)}
-                    className={`absolute cursor-grab active:cursor-grabbing rounded-xl bg-white p-2 border-2 ${canvasDragTarget === 'qr' ? 'border-emerald-400' : 'border-white'} shadow-lg`}
+                    className={`absolute cursor-grab active:cursor-grabbing rounded-xl p-2 border-2 ${canvasDragTarget === 'qr' ? 'border-emerald-400 bg-emerald-400/10' : 'border-white/80 bg-white/10'} shadow-lg`}
                     style={{
-                      left: `${((320 - cardDesign.qrSize / 2 - 12) / 640) * 100}%`,
+                      left: `${((cardDesign.qrX - cardDesign.qrSize / 2 - 12) / 640) * 100}%`,
                       top: `${((cardDesign.qrY - 12) / 760) * 100}%`,
                       width: `${((cardDesign.qrSize + 24) / 640) * 100}%`,
                       height: `${((cardDesign.qrSize + 24) / 760) * 100}%`,
                     }}
                   >
-                    {qrImageUrl ? <img src={qrImageUrl} alt="QR" className="h-full w-full object-contain pointer-events-none" /> : null}
+                    <span className="h-full w-full flex items-center justify-center text-[10px] uppercase tracking-wide text-slate-100/90 pointer-events-none">QR</span>
                   </button>
-
-                  <p className="absolute left-1/2 -translate-x-1/2 top-[92.6%] text-[0.85rem] md:text-[1.4rem] whitespace-nowrap" style={{ color: cardTheme.footerColor, fontSize: `${cardTheme.footerTextSize * 0.55}px` }}>
-                    {truncateForCard(cardTheme.footerText, 40)}
-                  </p>
                 </div>
               </div>
             </div>
@@ -1535,6 +1660,95 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
               </div>
 
               <p className="mt-2 text-xs text-slate-400">These settings apply to all card image exports, print, and ZIP bulk generation.</p>
+
+              <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/80 p-3 space-y-3">
+                <p className="text-xs uppercase tracking-wide text-emerald-300">Canvas Tools</p>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCanvasTarget('photo')}
+                    className={`px-2 py-1.5 rounded border ${selectedCanvasTarget === 'photo' ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-300'}`}
+                  >
+                    Photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCanvasTarget('text')}
+                    className={`px-2 py-1.5 rounded border ${selectedCanvasTarget === 'text' ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-300'}`}
+                  >
+                    Text
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCanvasTarget('qr')}
+                    className={`px-2 py-1.5 rounded border ${selectedCanvasTarget === 'qr' ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-300'}`}
+                  >
+                    QR
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <label className="inline-flex items-center gap-2 text-slate-300">
+                    <input type="checkbox" checked={showCanvasGuides} onChange={(e) => setShowCanvasGuides(e.target.checked)} />
+                    Show Guides
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-slate-300">
+                    <input type="checkbox" checked={snapToGrid} onChange={(e) => setSnapToGrid(e.target.checked)} />
+                    Snap to Grid
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 items-center text-xs text-slate-300">
+                  <span>Nudge Step</span>
+                  <select
+                    value={nudgeStep}
+                    onChange={(e) => setNudgeStep(Number(e.target.value))}
+                    className="px-2 py-1.5 rounded border border-slate-700 bg-slate-800 text-slate-100"
+                  >
+                    <option value={1}>1 px</option>
+                    <option value={2}>2 px</option>
+                    <option value={4}>4 px</option>
+                    <option value={8}>8 px</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5 text-xs">
+                  <span />
+                  <button type="button" onClick={() => nudgeSelected(0, -nudgeStep)} className="px-2 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800">Up</button>
+                  <span />
+                  <button type="button" onClick={() => nudgeSelected(-nudgeStep, 0)} className="px-2 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800">Left</button>
+                  <button type="button" onClick={() => nudgeSelected(0, nudgeStep)} className="px-2 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800">Down</button>
+                  <button type="button" onClick={() => nudgeSelected(nudgeStep, 0)} className="px-2 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800">Right</button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setCardDesign((prev) => clampCardDesign({ ...prev, qrX: 320 }))}
+                    className="px-2 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                  >
+                    Center QR
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCardDesign((prev) =>
+                        clampCardDesign({
+                          ...prev,
+                          topTitleY: defaultVCardDesign.topTitleY,
+                          mainTitleY: defaultVCardDesign.mainTitleY,
+                          footerY: defaultVCardDesign.footerY,
+                          textOffsetX: defaultVCardDesign.textOffsetX,
+                          textOffsetY: defaultVCardDesign.textOffsetY,
+                        })
+                      )
+                    }
+                    className="px-2 py-1.5 rounded border border-slate-700 text-slate-200 hover:bg-slate-800"
+                  >
+                    Reset Text Layout
+                  </button>
+                </div>
+              </div>
 
               <div className="mt-4 space-y-2 rounded-lg border border-slate-700 bg-slate-900/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-emerald-300">Text & Colors</p>
@@ -1600,16 +1814,36 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
               <div className="mt-4 space-y-2 rounded-lg border border-slate-700 bg-slate-900/80 p-3">
                 <p className="text-xs uppercase tracking-wide text-emerald-300">Font Sizes</p>
                 <label className="block text-xs text-slate-300">
+                  Top Title Size: {cardTheme.titleTopTextSize}
+                  <input type="range" min={14} max={38} value={cardTheme.titleTopTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, titleTopTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-xs text-slate-300">
+                  Main Title Size: {cardTheme.titleMainTextSize}
+                  <input type="range" min={28} max={62} value={cardTheme.titleMainTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, titleMainTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-xs text-slate-300">
                   Name Size: {cardTheme.nameTextSize}
                   <input type="range" min={28} max={82} value={cardTheme.nameTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, nameTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
                 </label>
                 <label className="block text-xs text-slate-300">
-                  Info Size: {cardTheme.infoTextSize}
-                  <input type="range" min={16} max={58} value={cardTheme.infoTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, infoTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
+                  ID Size: {cardTheme.idTextSize}
+                  <input type="range" min={16} max={54} value={cardTheme.idTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, idTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-xs text-slate-300">
+                  Bus No Size: {cardTheme.busNoTextSize}
+                  <input type="range" min={16} max={54} value={cardTheme.busNoTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, busNoTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-xs text-slate-300">
+                  Stop Size: {cardTheme.stopTextSize}
+                  <input type="range" min={16} max={54} value={cardTheme.stopTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, stopTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
                 </label>
                 <label className="block text-xs text-slate-300">
                   Footer Size: {cardTheme.footerTextSize}
                   <input type="range" min={20} max={68} value={cardTheme.footerTextSize} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, footerTextSize: Number(e.target.value) }))} className="mt-1 w-full" />
+                </label>
+                <label className="block text-xs text-slate-300">
+                  Text Glow Effect: {cardTheme.textGlow}
+                  <input type="range" min={0} max={10} value={cardTheme.textGlow} onChange={(e) => setCardTheme((prev) => clampCardTheme({ ...prev, textGlow: Number(e.target.value) }))} className="mt-1 w-full" />
                 </label>
               </div>
 
@@ -1716,6 +1950,17 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
                   />
                 </label>
                 <label className="block">
+                  QR Horizontal: {cardDesign.qrX}
+                  <input
+                    type="range"
+                    min={220}
+                    max={420}
+                    value={cardDesign.qrX}
+                    onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, qrX: Number(e.target.value) }))}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
                   QR Vertical: {cardDesign.qrY}
                   <input
                     type="range"
@@ -1723,6 +1968,61 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
                     max={430}
                     value={cardDesign.qrY}
                     onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, qrY: Number(e.target.value) }))}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  Top Title Y: {cardDesign.topTitleY}
+                  <input
+                    type="range"
+                    min={34}
+                    max={64}
+                    value={cardDesign.topTitleY}
+                    onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, topTitleY: Number(e.target.value) }))}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  Main Title Y: {cardDesign.mainTitleY}
+                  <input
+                    type="range"
+                    min={78}
+                    max={124}
+                    value={cardDesign.mainTitleY}
+                    onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, mainTitleY: Number(e.target.value) }))}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  Footer Y: {cardDesign.footerY}
+                  <input
+                    type="range"
+                    min={680}
+                    max={734}
+                    value={cardDesign.footerY}
+                    onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, footerY: Number(e.target.value) }))}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  Text Block Shift X: {cardDesign.textOffsetX}
+                  <input
+                    type="range"
+                    min={-50}
+                    max={120}
+                    value={cardDesign.textOffsetX}
+                    onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, textOffsetX: Number(e.target.value) }))}
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  Text Block Shift Y: {cardDesign.textOffsetY}
+                  <input
+                    type="range"
+                    min={-50}
+                    max={100}
+                    value={cardDesign.textOffsetY}
+                    onChange={(e) => setCardDesign((prev) => clampCardDesign({ ...prev, textOffsetY: Number(e.target.value) }))}
                     className="mt-1 w-full"
                   />
                 </label>
