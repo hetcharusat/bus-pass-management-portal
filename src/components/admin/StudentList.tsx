@@ -21,6 +21,11 @@ interface StudentListProps {
   refreshTrigger?: boolean
 }
 
+interface BusStop {
+  id: string
+  name: string
+}
+
 interface VCardDesign {
   photoX: number
   photoY: number
@@ -156,6 +161,9 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
   const [editImageFile, setEditImageFile] = useState<File | null>(null)
   const [editImagePreview, setEditImagePreview] = useState<string | null>(null)
   const [editRemoveImage, setEditRemoveImage] = useState(false)
+  const [busStops, setBusStops] = useState<BusStop[]>([])
+  const [showEditBusStopSuggestions, setShowEditBusStopSuggestions] = useState(false)
+  const [activeEditBusStopIndex, setActiveEditBusStopIndex] = useState(-1)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<{
     target: Exclude<CanvasDragTarget, null>
@@ -253,6 +261,25 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
 
     loadGlobalSettings()
   }, [])
+
+  useEffect(() => {
+    const fetchBusStops = async () => {
+      const { data, error: busStopError } = await supabase.from('bus_stops').select('id, name').order('name')
+
+      if (busStopError) {
+        console.error('Error fetching bus stops:', busStopError)
+        return
+      }
+
+      setBusStops(data || [])
+    }
+
+    fetchBusStops()
+  }, [])
+
+  const filteredEditBusStops = busStops
+    .filter((stop) => stop.name.toLowerCase().includes(editForm.bus_stop.toLowerCase().trim()))
+    .slice(0, 8)
 
   const saveGlobalSettings = async () => {
     setSettingsSaving(true)
@@ -530,6 +557,8 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     setEditImageFile(null)
     setEditImagePreview(student.image_url)
     setEditRemoveImage(false)
+    setShowEditBusStopSuggestions(false)
+    setActiveEditBusStopIndex(-1)
   }
 
   const closeEditModal = () => {
@@ -537,6 +566,52 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
     setEditImageFile(null)
     setEditImagePreview(null)
     setEditRemoveImage(false)
+    setShowEditBusStopSuggestions(false)
+    setActiveEditBusStopIndex(-1)
+  }
+
+  const handleEditBusStopKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showEditBusStopSuggestions && e.key === 'ArrowDown' && filteredEditBusStops.length > 0) {
+      e.preventDefault()
+      setShowEditBusStopSuggestions(true)
+      setActiveEditBusStopIndex(0)
+      return
+    }
+
+    if (!showEditBusStopSuggestions) return
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveEditBusStopIndex((prev) => {
+        const next = prev + 1
+        return next >= filteredEditBusStops.length ? 0 : next
+      })
+      return
+    }
+
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveEditBusStopIndex((prev) => {
+        const next = prev - 1
+        return next < 0 ? filteredEditBusStops.length - 1 : next
+      })
+      return
+    }
+
+    if (e.key === 'Enter' && activeEditBusStopIndex >= 0 && filteredEditBusStops[activeEditBusStopIndex]) {
+      e.preventDefault()
+      const selected = filteredEditBusStops[activeEditBusStopIndex].name
+      setEditForm((prev) => ({ ...prev, bus_stop: selected }))
+      setShowEditBusStopSuggestions(false)
+      setActiveEditBusStopIndex(-1)
+      return
+    }
+
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setShowEditBusStopSuggestions(false)
+      setActiveEditBusStopIndex(-1)
+    }
   }
 
   const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1403,13 +1478,54 @@ export const StudentList: React.FC<StudentListProps> = ({ refreshTrigger }) => {
                 required
                 className="spotlight-field px-3 py-2.5 border border-slate-600 bg-slate-800 text-slate-100 rounded-lg outline-none"
               />
-              <input
-                value={editForm.bus_stop}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, bus_stop: e.target.value }))}
-                placeholder="Bus Stop"
-                required
-                className="spotlight-field px-3 py-2.5 border border-slate-600 bg-slate-800 text-slate-100 rounded-lg outline-none md:col-span-2"
-              />
+              <div className="relative md:col-span-2">
+                <input
+                  value={editForm.bus_stop}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    setEditForm((prev) => ({ ...prev, bus_stop: next }))
+                    setShowEditBusStopSuggestions(next.trim().length > 0 && busStops.length > 0)
+                    setActiveEditBusStopIndex(-1)
+                  }}
+                  onKeyDown={handleEditBusStopKeyDown}
+                  onFocus={() => {
+                    if (filteredEditBusStops.length > 0) {
+                      setShowEditBusStopSuggestions(true)
+                    }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setShowEditBusStopSuggestions(false)
+                      setActiveEditBusStopIndex(-1)
+                    }, 120)
+                  }}
+                  placeholder="Type or pick a bus stop"
+                  required
+                  className="spotlight-field w-full px-3 py-2.5 border border-slate-600 bg-slate-800 text-slate-100 rounded-lg outline-none"
+                />
+                {showEditBusStopSuggestions && filteredEditBusStops.length > 0 ? (
+                  <div className="absolute z-30 mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 shadow-xl max-h-52 overflow-auto">
+                    {filteredEditBusStops.map((stop, index) => (
+                      <button
+                        key={stop.id}
+                        type="button"
+                        onMouseDown={() => {
+                          setEditForm((prev) => ({ ...prev, bus_stop: stop.name }))
+                          setShowEditBusStopSuggestions(false)
+                          setActiveEditBusStopIndex(-1)
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm transition ${
+                          index === activeEditBusStopIndex
+                            ? 'bg-emerald-700/40 text-emerald-200'
+                            : 'text-slate-200 hover:bg-slate-700'
+                        }`}
+                      >
+                        {stop.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
 
               <div className="md:col-span-2 rounded-lg border border-slate-700 bg-slate-800/60 p-3">
                 <p className="text-xs uppercase tracking-wide text-slate-400">Student Photo</p>
