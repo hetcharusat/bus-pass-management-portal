@@ -1,0 +1,8 @@
+DBpass - wtzjj9rWW1qUUTYX
+api url - https://iynjaqnvllawtgdphdbc.supabase.co
+
+VITE_SUPABASE_URL=https://iynjaqnvllawtgdphdbc.supabase.co
+VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY=sb_publishable_0SI6LBUrAtmuGnG85eZnKw_4Am_IyHk
+
+
+anon key - eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5bmphcW52bGxhd3RnZHBoZGJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMzIxMzYsImV4cCI6MjA5MDcwODEzNn0.6FVKZFjufaQuQd-oQQk8n-0-yI3P0RnvGrZHVh42Jo0
