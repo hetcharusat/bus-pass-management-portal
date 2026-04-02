@@ -366,13 +366,18 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
     if (!imageFile) return null
 
     try {
-      const fileExt = imageFile.name.split('.').pop()
-      const fileName = `${studentId}-${Date.now()}.${fileExt}`
-      const filePath = `student-images/${fileName}`
+      const fileExt = imageFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const safeStudentId = studentId.replace(/[^a-zA-Z0-9_-]/g, '_')
+      const fileName = `${safeStudentId}-${Date.now()}.${fileExt}`
+      const filePath = fileName
 
       const { error: uploadError } = await supabase.storage
         .from('student-images')
-        .upload(filePath, imageFile)
+        .upload(filePath, imageFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: imageFile.type || 'image/jpeg',
+        })
 
       if (uploadError) throw uploadError
 
@@ -383,7 +388,8 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
       return data.publicUrl
     } catch (err) {
       console.error('Image upload error:', err)
-      throw new Error('Failed to upload image')
+      const message = err instanceof Error ? err.message : 'Failed to upload image'
+      throw new Error(`Image upload failed: ${message}`)
     }
   }
 
