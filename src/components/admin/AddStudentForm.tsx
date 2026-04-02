@@ -33,6 +33,23 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
     fees_paid_at: null as string | null,
   })
 
+  const toFriendlyError = (err: unknown, fallback: string) => {
+    const message = err instanceof Error ? err.message : ''
+    const messageLower = message.toLowerCase()
+    const supabaseErr = err as { code?: string; status?: number; message?: string; details?: string }
+
+    if (supabaseErr?.code === '23505' || supabaseErr?.status === 409 || messageLower.includes('duplicate key')) {
+      return 'Student ID already exists. Please use a different Student ID.'
+    }
+
+    if (messageLower.includes('failed to fetch') || messageLower.includes('networkerror') || messageLower.includes('blocked_by_client')) {
+      return 'Network request was blocked (possible ad blocker/privacy extension). Please disable blocker for this site and try again.'
+    }
+
+    if (message) return message
+    return fallback
+  }
+
   useEffect(() => {
     const fetchBusStops = async () => {
       const { data, error } = await supabase.from('bus_stops').select('id, name').order('name');
@@ -388,8 +405,7 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
       return data.publicUrl
     } catch (err) {
       console.error('Image upload error:', err)
-      const message = err instanceof Error ? err.message : 'Failed to upload image'
-      throw new Error(`Image upload failed: ${message}`)
+      throw new Error(`Image upload failed: ${toFriendlyError(err, 'Failed to upload image')}`)
     }
   }
 
@@ -407,11 +423,25 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
       if (!formData.bus_no || Number.isNaN(Number(formData.bus_no))) {
         throw new Error('Bus number is required and must be a number.')
       }
+
+      const studentIdTrimmed = formData.student_id.trim()
+      const { data: existingStudent, error: existingStudentError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('student_id', studentIdTrimmed)
+        .maybeSingle()
+
+      if (existingStudentError) {
+        throw existingStudentError
+      }
+      if (existingStudent) {
+        throw new Error('Student ID already exists. Please use a different Student ID.')
+      }
       
       // Upload image and get URL
       let imageUrl: string | null = null
       if (imageFile) {
-        imageUrl = await uploadImage(formData.student_id)
+        imageUrl = await uploadImage(studentIdTrimmed)
       }
 
       // Insert student record
@@ -420,7 +450,7 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
         .insert([
           {
             full_name: formData.full_name,
-            student_id: formData.student_id,
+            student_id: studentIdTrimmed,
             bus_no: Number(formData.bus_no),
             contact_no: formData.contact_no,
             bus_stop: finalBusStop,
@@ -454,7 +484,7 @@ export const AddStudentForm: React.FC<AddStudentFormProps> = ({ onStudentAdded }
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add student')
+      setError(toFriendlyError(err, 'Failed to add student'))
     } finally {
       setLoading(false)
     }
